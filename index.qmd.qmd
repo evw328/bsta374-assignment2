@@ -1,0 +1,297 @@
+---
+title: "WILKINSON_E_Exercise1"
+format: html
+editor: visual
+embed-resources: true
+---
+
+## Exercise 1
+
+```{R}
+#| label: setup
+
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(tmap)
+library(patchwork)
+
+nc <- st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
+
+```
+
+**Part A — Read and describe the data (2 points)** Answer each in one or two sentences of prose, outside the code chunks, and show the code you used to find out.
+
+**1.** How many features does nc contain, and what does one row represent?
+
+The data contains 100 rows and 15 columns. Each row represents a county.
+
+**2.** What geometry type is stored? Why is it that type rather than POLYGON? (Look at the coast.)
+
+The geometry is a multipolygon. This is because some of the counties are not just one land mass, but are multiple diconnected landmasses (such as islands), so they are not all one polygon, and instead they are multipolygons.
+
+**3.** What coordinate reference system is the data in? Give its name, say whether it is geographic or projected, and say how you found out.
+
+The coordinate reference system is geographic because the line st_is_longlat(nc) outputs TRUE if the CRS is geographic, and it outputted TRUE. Its name is NAD27, aka North American Datum 1927, and it was found with this line of code: st_crs(nc).
+
+**4.** In your own words, what do BIR74 and SID74 measure? Why does having both matter more than having either one alone?
+
+SID74 stands for sudden infant deaths in the time period between 1974-1978. BIR74 stands for the number of live births between 1974-1978. Having either one alone would mean that the other would have no reference point to go off of. it is hard to understand the magnitude of the sudden infant deaths unless there is a reference point of the number of life births to compare it to.
+
+```{r}
+#|label: read and describe the data
+
+# A1 -- how big is it, and what are the columns?
+
+nrow(nc)
+names(nc)
+nc # the header block above the table says a lot
+
+
+# A2 -- one geometry type per feature; count them
+
+table(st_geometry_type(nc))
+
+
+# A3 -- three ways of asking about the CRS
+
+st_crs(nc) # the full definition
+st_crs(nc)$input # the short name
+st_is_longlat(nc) # TRUE = geographic (degrees), FALSE = projected (metres)
+
+# A4 -- the help page documents every column
+?nc
+```
+
+**Part B — Coordinate reference systems (2 points)**
+
+**1.** Transform nc to EPSG:32119 (NAD83 / North Carolina State Plane, in metres) and store it as a new object. Do not overwrite nc — you need both.
+
+**2.** Plot the counties before and after, near enough to each other that a reader can compare them. One or two sentences on what visibly changed.
+
+The p2 map differs from p1 because the left side of North Carolina is tilted upwards more. All of the counties are slightly different. The original map used degrees, mapping NC on a rounded plane. The projected map uses meters, mapping NC on a flat plane, thus changing the shape.
+
+**3.** Compute the area of every county in square kilometres, using the projected version. Report the five largest.
+
+The 5 largest from largest to smallest are Columbus, Robeson, Sampson, Bladen, and Wake.
+
+**4.** Now compute areas from the unprojected object as well. Compare the two sets of numbers and explain, in two or three sentences, what sf did and why the projected version is the one you would report in a paper.
+
+I would report the projected version because that is the flat map, which is what area is commonly reported from. There are minor differences between the two, with numbers changing a max of 1 km\^2.
+
+```{r}
+# B1
+
+nc_proj <- st_transform(nc, 32119)
+st_crs(nc_proj)
+st_crs(nc)
+
+
+# B2 -- one plot each
+
+p1 <- ggplot(nc
+            ) + 
+      geom_sf(fill = "grey90", 
+              colour = "white"
+            ) + 
+      theme_void()
+
+p2 <- ggplot(nc_proj
+             ) + 
+      geom_sf(fill = "grey90",
+              colour = "white"
+             ) + 
+      theme_void()
+p1 + p2
+
+
+# B3 -- st_area() returns square METRES, as a units object
+
+nc_proj <- nc_proj |>
+  mutate(area_km2 = as.numeric(units::set_units(st_area(nc_proj), km^2)))
+
+nc_proj |>
+  st_drop_geometry() |>
+  slice_max(area_km2, n = 5) |>
+  select(NAME, area_km2)
+
+
+# B4 -- now do the same starting from nc (degrees) and compare
+
+nc <- nc |>
+  mutate(area2 = as.numeric(units::set_units(st_area(nc), km^2)))
+nc |>
+  st_drop_geometry() |>
+  slice_max(area2, n=5) |>
+  select(NAME, area2)
+
+
+```
+
+**Part C — Choropleth maps (5 points)** This is the largest part of the exercise, and it is as much about judgement as about code.
+
+**1.** Add a column giving the SIDS rate per 1,000 live births for 1974–78.
+
+**2.** Make a choropleth of the raw counts (SID74) and one of the rate, using ggplot2. Then write three or four sentences explaining why the two maps disagree, and which one you would put in front of a health department, and why.
+
+The maps differ in that the map of the rate of SID shows much higher rates in the northeast than the count map, as well as in one southern county. I would show the health department the rates map because the fact that rates are used make the numbers much more relative to each other. The rate map gives a more accurate picture of where the health department should focus their resources, cause there are higher rates of SID compared to live births.
+
+**3.** Rebuild the rate map using tmap. Same information, other package.
+
+**4.** Vary the class intervals on the rate map: produce it at least three ways — for instance equal intervals, quantiles, and Jenks natural breaks. Two or three sentences on how much the apparent geography of risk changes. Name the classification you would defend, and say why.
+
+The quantiles map shows much higher rates of SIDS than the other maps in most counties. The equal map, on the other hand, seems to show much lower rates of SIDS than the other maps in most counties. The term "pretty" splits the data into visually appealing chunks, using rounded numbers, and works great when the data is distributed evenly. "Jenks" splits the data into natural breaks, "quantile splits it into 4 even chunks, while "equal" divides the range into equal sub-sections. I would prefer to use either "quantile" or "jenks." "Quantile" is useful for looking at rates in relation to surrounding companies, while "jenks" works well for determining which areas seem to follow the same trend. Ultimately, I would choose "jenks" because often when looking at data in public health, we are interested in finding trends or similarities in the data.
+
+**5.** Every map you submit must have a legend with units, a title, thin boundaries that do not overwhelm the fill, and a perceptually uniform, colour-blind-safe palette. State in one sentence which palette you chose and why, including whether dark means high or low
+
+I chose the palette "mako" which transitions from yellow to blue, avoiding the typical red-green colorblindness. It can also still be interpreted on a grayscale. The darker the color, the higher the SIDS rate. I chose this because dark is usually associated with negatives.
+
+```{r}
+# C1 -- deaths per 1,000 live births
+
+nc <- nc |>
+  mutate(rate74 = (SID74 / BIR74) * 1000)
+
+knitr::kable(head(nc))
+
+# C2 -- counts, then rates. Same code, one variable changed.
+
+  #Number Map
+    ggplot(nc) +
+        geom_sf(aes(fill = SID74), 
+                colour = "white", 
+                linewidth = 0.15
+                ) +
+        scale_fill_viridis_c(option = "mako", 
+                             direction = -1, 
+                             name = "Number of Sudden Infant Deaths"
+                             ) +
+        labs(title = "Sudden Infant Deaths (1974-1978)") +
+        theme_void()
+
+  #Rate Map
+    ggplot(nc) +
+      geom_sf(aes(fill = rate74), 
+              colour = "white", 
+              linewidth = 0.15
+              ) +
+      scale_fill_viridis_c(option = "mako", 
+                           direction = -1, 
+                           name = "Rate of Sudden Infant Deaths per 1000"
+                           ) +
+      labs(title = "Rate of Sudden Infant Deaths per County between 1974-1978") +
+      theme_void()
+
+
+# C3 -- the same map in tmap
+    
+tmap_mode("plot") # "view" makes it interactive
+tm_shape(nc) +
+  tm_polygons(fill = "rate74",  
+              fill.scale = tm_scale_intervals(
+                style = "pretty", 
+                values = "-mako",
+                n=5
+              ), 
+              fill.legend = tm_legend(title = "SID Rate (per 1,000)")
+              )+
+  tm_title("Rate of Sudden Infant Deaths between 1974-1978")
+
+
+# C4 -- change ONLY the classification, so the comparison is fair
+
+  #Quantile Map
+    tm_shape(nc) +
+      tm_polygons(fill = "rate74",
+                  fill.scale = tm_scale_intervals(
+                    style = "quantile", 
+                    values = "-mako", 
+                    n = 5
+                    ), 
+                  fill.legend = tm_legend(
+                    title = "SID Rate (per 1,000)"
+                  )
+                ) + 
+                tm_title("Quantiles") 
+         
+  #Jenks Map     
+    tm_shape(nc) +
+      tm_polygons(fill = "rate74", 
+                  fill.scale = tm_scale_intervals(
+                    style = "jenks", 
+                    values = "-mako",
+                    n = 5
+                    ),
+                  fill.legend = tm_legend(
+                    title = "SID Rate (per 1,000)"
+                    )
+                  ) + 
+                  tm_title("Jenks")
+
+  #Equal Map
+    tm_shape(nc) +
+      tm_polygons(fill = "rate74",
+                  fill.scale = tm_scale_intervals(
+                    style = "equal", 
+                    values = "-mako",
+                    n = 5
+                    ),
+                  fill.legend = tm_legend(
+                    title = "SID Rate (per 1,000)"
+                     )
+                  ) + 
+                tm_title("Equal")
+```
+
+**Part D — A point layer (2 points)**
+
+**1.** Look up the approximate longitude and latitude of four cities in North Carolina and build a small table holding the name and the two coordinates. Cite where you got the coordinates.
+
+I got the coordinates from Latitude and Longitude Finder (<https://www.latlong.net/>).
+
+**2.** Turn that table into an sf object with the correct CRS. State which EPSG code you used and why.
+
+I used EPSG code 4326 because that is standard for unprojected geographic coordinates (degrees), as we are using.
+
+**3.** Plot the four cities on top of your rate choropleth, labelled legibly.
+
+**4.** One sentence: what would go wrong if you built the sf object with the coordinate columns in the other order?
+
+The cities would not be shown on North Carolina on that map, because it would be reading latitude as longitude and vice versa.
+
+```{r}
+# D1 -- North Carolina longitudes are NEGATIVE (west of Greenwich)
+
+cities <- tibble(
+ name = c("Charlotte", "Raleigh", "Greensboro", "Wilmington"),
+ lon = c(-80.84, -78.63, -79.79, -77.94),
+ lat = c(35.22, 35.77, 36.07, 34.23)
+)
+
+knitr::kable(cities, col.names = c("City", "Longitude", "Latitude"))
+
+
+# D2 -- coords takes the column names in x, y order: longitude FIRST
+cities_sf <- cities |>
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+# D3 -- layers draw in order, so points come after polygons
+ggplot() +
+  geom_sf(data = nc, aes(fill = rate74), colour = "white", linewidth = 0.15) +
+  geom_sf(data = cities_sf, size = 2.5, colour = "black") +
+  geom_sf_text(data = cities_sf, aes(label = name), size = 3, nudge_y = 0.15) +
+  scale_fill_viridis_c(option = "-mako", direction = -1, name = "SIDS per 1,000 live births") +
+  labs(title = "Sudden Infant Death Rate (1974-1978)") +
+  theme_void()
+
+```
+
+**Part E — Reproducibility and AI use (1 point)** **1.** Your document renders from a clean session, with every package loaded explicitly. (Check this last, after you have stopped editing.)
+
+**2.** End the document with an AI use note: which tools you used, what for, and at which stage — planning, coding, debugging, interpreting, or writing. Two or three sentences.
+
+When I got stuck with coding and debugging, I used Gemini after searching through class resources. It helped me see what I was missing and get an idea of what to look for in the class resources. I mostly used it to help me find the code within class documents, not write the code itself.
+
+```{r}
+sessionInfo()
+```
