@@ -1,6 +1,7 @@
 ---
 title: "WILKINSON_E_Exercise1"
 format: html
+author: "Evy Wilkinson"
 editor: visual
 embed-resources: true
 ---
